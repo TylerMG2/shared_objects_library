@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "core",
+    "proc-macros", 
+    "websocket-rooms"
+]
