@@ -37,7 +37,7 @@ pub fn derive_player_fields(input: TokenStream) -> TokenStream {
             }
         }
     } else {
-        panic!("player_fields can only be applied to structs");
+        panic!("PlayerFields can only be applied to structs");
     }
 
     // Ensure both fields were found
