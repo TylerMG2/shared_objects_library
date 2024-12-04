@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Expr, Lit, Type};
+use syn::{parse_macro_input, DeriveInput, Expr, Ident, Lit, Type};
 
 #[proc_macro_derive(PlayerFields, attributes(name, disconnected))]
 pub fn derive_player_fields(input: TokenStream) -> TokenStream {
@@ -15,36 +15,24 @@ pub fn derive_player_fields(input: TokenStream) -> TokenStream {
     // Not sure if theres a cleaner way to do this type checking
     if let syn::Data::Struct(ref data) = input.data {
         for field in &data.fields {
-            if let Some(_attr) = field.attrs.iter().find(|a| a.path().is_ident("name")) {
-                if let Type::Array(array) = &field.ty {
-                    if let Type::Path(path) = &*array.elem { // I don't really understand Path but I know elem returns the type of the array which is a Box<Type> hence the *
-                        if path.path.is_ident("u8") {
-                            if let Expr::Lit(lit) = &array.len { // If the length is a literal
-                                if let Lit::Int(lit_int) = &lit.lit { // If that literal is an integer
-                                    name_length = Some(lit_int.base10_parse::<usize>().unwrap());
-                                }
-                            }
-                        } else {
-                            panic!("Field annotated with `#[name]` must be an array of u8");
-                        }
-                    } else {
-                        panic!("Field annotated with `#[name]` must be an array of u8");
-                    }
-                } else {
-                    panic!("Field annotated with `#[name]` must be an array of u8");
+            if has_attr(&field.attrs, "name") {
+                if name_field.is_some() { 
+                    panic!("Only one field can be annotated with `#[name]`"); 
                 }
+                let (_, len) = is_fixed_size_array(&field.ty).expect("Field annotated with `#[name]` must be a fixed size array");
+                name_length = Some(len);
                 name_field = Some(field.ident.clone());
             }
 
-            if let Some(_attr) = field.attrs.iter().find(|a| a.path().is_ident("disconnected")) {
-                if let Type::Path(path) = &field.ty {
-                    if path.path.is_ident("bool") {
-                    } else {
-                        panic!("Field annotated with `#[disconnected]` must be a bool");
-                    }
-                } else {
-                    panic!("Field annotated with `#[disconnected]` must be a bool");
+            if has_attr(&field.attrs, "disconnected") {
+                if disconnected_field.is_some() { 
+                    panic!("Only one field can be annotated with `#[disconnected]`"); 
                 }
+
+                if !is_type(&field.ty, "bool") {
+                    panic!("Field annotated with `#[disconnected]` must be of type `bool`");
+                }
+
                 disconnected_field = Some(field.ident.clone());
             }
         }
@@ -59,7 +47,7 @@ pub fn derive_player_fields(input: TokenStream) -> TokenStream {
     // Generate methods to get and set the name and disconnected fields
     let name_length = name_length.unwrap();
     let expanded = quote! {
-        impl PlayerFields for #name {
+        impl websocket_rooms::core::PlayerFields for #name {
             fn name(&self) -> &[u8] {
                 &self.#name_field
             }
@@ -82,4 +70,95 @@ pub fn derive_player_fields(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+#[proc_macro_derive(RoomFields, attributes(players, host))]
+pub fn derive_room_fields(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+
+    let mut host_field = None;
+    let mut players_field = None;
+    let mut player_array_type = None;
+
+    // Process fields
+    if let syn::Data::Struct(ref data) = input.data {
+        for field in &data.fields {
+            if has_attr(&field.attrs, "host") {
+                if host_field.is_some() { 
+                    panic!("Only one field can be annotated with `#[host]`"); 
+                }
+
+                if !is_type(&field.ty, "u8") {
+                    panic!("Field annotated with `#[host]` must be of type `u8`");
+                }
+                host_field = Some(field.ident.clone());
+            }
+
+            if has_attr(&field.attrs, "players") {
+                if players_field.is_some() { 
+                    panic!("Only one field can be annotated with `#[players]`"); 
+                }
+                let (ident, _) = is_fixed_size_array(&field.ty).expect("Field annotated with `#[players]` must be a fixed size array");
+                player_array_type = Some(ident);
+                players_field = Some(field.ident.clone());
+            }
+        }
+    } else {
+        panic!("RoomFields can only be applied to structs");
+    }
+
+    // Ensure fields exist
+    let host_field = host_field.expect("Missing `#[host]` field");
+    let players_field = players_field.expect("Missing `#[players]` field");
+    let player_array_type = player_array_type.expect("Failed to determine player array type");
+
+    // Generate the RoomFields implementation
+    let expanded = quote! {
+        impl websocket_rooms::core::RoomFields for #name {
+            fn host(&self) -> u8 {
+                self.#host_field
+            }
+
+            fn set_host(&mut self, host: u8) {
+                self.#host_field = host;
+            }
+
+            fn players(&self) -> &[#player_array_type] {
+                &self.#players_field
+            }
+
+            fn players_mut(&mut self) -> &mut [#player_array_type] {
+                &mut self.#players_field
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
+    attrs.iter().any(|a| a.path().is_ident(name))
+}
+
+fn is_fixed_size_array(ty: &Type) -> Option<(Ident, usize)> {
+    if let Type::Array(array) = ty {
+        if let Type::Path(path) = &*array.elem {
+            if let Some(ident) = path.path.get_ident() {
+                if let Expr::Lit(lit) = &array.len {
+                    if let Lit::Int(lit_int) = &lit.lit {
+                        return Some((ident.clone(), lit_int.base10_parse::<usize>().unwrap()));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn is_type(ty: &Type, name: &str) -> bool {
+    if let Type::Path(path) = ty {
+        return path.path.is_ident(name);
+    }
+    false
 }

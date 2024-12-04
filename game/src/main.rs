@@ -1,4 +1,4 @@
-use websocket_rooms::{core::PlayerFields, proc_macros::PlayerFields};
+use websocket_rooms::{core::{PlayerFields, RoomFields}, proc_macros::{PlayerFields, RoomFields}};
 
 fn main() {
     let mut player = Player {
@@ -7,6 +7,17 @@ fn main() {
     };
 
     test(&mut player);
+
+    let mut room = Room {
+        players: [player; 8],
+        host: 0,
+    };
+
+    println!("{:?}", room.players[0].name());
+
+    room.players_mut()[0].set_name(b"hello");
+
+    println!("{:?}", room.players[0].name());
 }
 
 #[derive(PlayerFields, Clone, Copy)]
@@ -16,6 +27,15 @@ struct Player {
 
     #[disconnected] 
     disconnected: bool,
+}
+
+#[derive(RoomFields, Clone, Copy)]
+struct Room {
+    #[players]
+    players: [Player; 8],
+
+    #[host]
+    host: u8,
 }
 
 fn test(player: &mut impl PlayerFields) {
