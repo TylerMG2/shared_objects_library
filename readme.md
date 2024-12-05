@@ -1,3 +1,17 @@
+## Networked Trait
+The network derive macro will both implement the Networked trait but it will also create an optional version of the struct. It will support primitves, arrays and other types that also derive the Networked trait. For non primitive types that implement the Networked trait, it will replace the type with an Option<Vec<u8>> Vec<u8> being the output of bincode::serialize. For example
+
+struct Room {
+	players: [Option<Player>; 8]
+}
+
+struct _OptionalRoom {
+	players: Option<[Option<Option<Vec<u8>>>; 8]>
+}
+
+In the above example you can also see how arrays will be handled, the outside Option around the whole array will be some if atleast one of the items has changes or its attributes have changed, might need to add another function to the Networked trait to determine if a struct has changed
+
+## Handling client events
 Ideally we want the library to provide secure updates whilst still being easy for the client to use.
 
 The issue at the moment is we would be allowing the client to update any field in the struct and send it over, that would then require anyone using the library to check every
