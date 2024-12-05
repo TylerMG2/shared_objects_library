@@ -11,3 +11,9 @@ pub trait RoomFields {
     fn host(&self) -> u8;
     fn set_host(&mut self, host: u8);
 }
+
+pub trait Networked {
+    fn serialize(&self) -> Vec<u8>;
+    fn update_from(&mut self, data: &[u8]);
+    fn is_different(&self) -> bool;
+}

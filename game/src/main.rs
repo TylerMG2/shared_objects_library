@@ -1,9 +1,11 @@
-use websocket_rooms::{core::{PlayerFields, RoomFields}, proc_macros::{PlayerFields, RoomFields}};
+use serde::{Deserialize, Serialize};
+use websocket_rooms::{core::{PlayerFields, RoomFields}, proc_macros::{Networked, PlayerFields, RoomFields}};
 
 fn main() {
     let mut player = Player {
         test: [0; 20],
         disconnected: false,
+        cards: 0,
     };
 
     test(&mut player);
@@ -20,16 +22,19 @@ fn main() {
     println!("{:?}", room.players[0].name());
 }
 
-#[derive(PlayerFields, Clone, Copy)]
+#[derive(PlayerFields, Clone, Copy, Networked, Serialize, Deserialize)]
 struct Player {
-    #[name] 
+    #[name]
     test: [u8; 20],
 
-    #[disconnected] 
+    #[disconnected]
     disconnected: bool,
+
+    #[private] // This field should only be sent to the owner of the player, the macro should also enforce this is an Option since some clients may not have this field
+    cards: u8,
 }
 
-#[derive(RoomFields, Clone, Copy)]
+#[derive(Clone, Copy, Networked, RoomFields, Serialize, Deserialize)]
 struct Room {
     #[players]
     players: [Player; 8],

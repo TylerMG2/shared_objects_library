@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Expr, Ident, Lit, Type};
+use syn::{parse_macro_input, Data, DeriveInput, Expr, Field, Fields, Ident, Lit, Type};
 
 #[proc_macro_derive(PlayerFields, attributes(name, disconnected))]
 pub fn derive_player_fields(input: TokenStream) -> TokenStream {
@@ -82,7 +82,7 @@ pub fn derive_room_fields(input: TokenStream) -> TokenStream {
     let mut player_array_type = None;
 
     // Process fields
-    if let syn::Data::Struct(ref data) = input.data {
+    if let Data::Struct(ref data) = input.data {
         for field in &data.fields {
             if has_attr(&field.attrs, "host") {
                 if host_field.is_some() { 
@@ -144,11 +144,12 @@ fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
 fn is_fixed_size_array(ty: &Type) -> Option<(Ident, usize)> {
     if let Type::Array(array) = ty {
         if let Type::Path(path) = &*array.elem {
-            if let Some(ident) = path.path.get_ident() {
-                if let Expr::Lit(lit) = &array.len {
-                    if let Lit::Int(lit_int) = &lit.lit {
-                        return Some((ident.clone(), lit_int.base10_parse::<usize>().unwrap()));
-                    }
+            // Get type of array
+            let ident = path.path.get_ident().unwrap();
+
+            if let Expr::Lit(lit) = &array.len {
+                if let Lit::Int(lit_int) = &lit.lit {
+                    return Some((ident.clone(), lit_int.base10_parse::<usize>().unwrap()));
                 }
             }
         }
@@ -161,4 +162,78 @@ fn is_type(ty: &Type, name: &str) -> bool {
         return path.path.is_ident(name);
     }
     false
+}
+
+enum FieldVisibility {
+    Public,
+    Private,
+}
+
+enum FieldType {
+    Primitive(Type),
+    Networked,
+    Array(Box<FieldType>),
+}
+
+struct FieldInfo {
+    ident: Ident,
+    visibility: FieldVisibility,
+    ty: FieldType,
+}
+
+// TODO: Add support for non-networked fields maybe using #[serde(skip)], for now all fields are networked and private fields
+#[proc_macro_derive(Networked, attributes(private))]
+pub fn derive_networked(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+
+    let fields = if let Data::Struct(data) = &input.data {
+        if let Fields::Named(fields) = &data.fields {
+            &fields.named
+        } else {
+            panic!("Networked can only be applied to structs with named fields");
+        }
+    } else {
+        panic!("Networked can only be applied to structs");
+    };
+
+    let networked_fields = fields.iter().map(|field| {
+        // Check if the field is a primitive type
+        panic!("Not implemented");
+        
+
+        if has_attr(&field.attrs, "private") {
+            // Make sure its an Option
+            if let Type::Path(path) = &field.ty {
+                if let Some(ident) = path.path.get_ident() {
+                    if ident != "Option" {
+                        panic!("Private fields must be of type `Option`");
+                    }
+                }
+                panic!("Private fields must be of type `Option`");
+            }
+            panic!("Private fields must be of type `Option`");
+            FieldVisibility::Private(field.clone())
+        } else {
+            FieldVisibility::Public(field.clone())
+        }
+    });
+
+    let expanded = quote! {
+        impl websocket_rooms::core::Networked for #name {
+            fn serialize(&self) -> Vec<u8> {
+                bincode::serialize(self).unwrap()
+            }
+    
+            fn update_from(&mut self, data: &[u8]) {
+                *self = bincode::deserialize(data).unwrap();
+            }
+
+            fn is_different(&self) -> bool {
+                false
+            }
+        };
+    };
+
+    TokenStream::from(expanded)
 }
