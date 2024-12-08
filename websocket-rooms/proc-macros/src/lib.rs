@@ -166,113 +166,101 @@ fn is_type(ty: &Type, name: &str) -> bool {
     false
 }
 
-
-// #[proc_macro_derive(Networked, attributes(private))]
-// pub fn derive_networked(input: TokenStream) -> TokenStream {
-//     let input = parse_macro_input!(input as DeriveInput);
-//     let name = &input.ident;
-
-//     // Add copies of each field to the struct prefixed with '__' to store the previous value
-//     let fields = if let Data::Struct(data) = &input.data {
-//         if let Fields::Named(fields) = &data.fields {
-//             &fields.named
-//         } else {
-//             panic!("Networked can only be applied to structs with named fields");
-//         }
-//     } else {
-//         panic!("Networked can only be applied to structs");
-//     };
-    
-//     let networked_fields = fields.iter().map(|field| {
-//         if has_attr(&field.attrs, "private") {
-//             // Make sure its an Option
-//             if let Type::Path(path) = &field.ty {
-//                 if let Some(ident) = path.path.get_ident() {
-//                     if ident != "Option" {
-//                         panic!("Private fields must be of type `Option`");
-//                     }
-//                 }
-//                 panic!("Private fields must be of type `Option`");
-//             }
-//             panic!("Private fields must be of type `Option`");
-//         }
-//         field.clone()
-//     });
-
-//     let expanded = quote! {
-//         impl websocket_rooms::core::Networked for #name {
-//             type Optional = #name;
-
-//             fn serialize(&self) -> Vec<u8> {
-//                 bincode::serialize(self).unwrap()
-//             }
-
-//             fn update_from(&mut self, data: &[u8]) {
-//                 *self = bincode::deserialize(data).unwrap();
-//             }
-
-//             fn is_different(&self) -> bool {
-//                 false
-//             }
-//         };
-//     };
-
-//     TokenStream::from(expanded)
-// }
-
 // TODO: Add support for non-networked fields maybe using #[serde(skip)], for now all fields are networked and private fields
-// #[proc_macro_derive(Networked, attributes(private))]
-// pub fn derive_networked(input: TokenStream) -> TokenStream {
-//     let input = parse_macro_input!(input as DeriveInput);
-//     let name = &input.ident;
+#[proc_macro_derive(Networked, attributes(private, id))]
+pub fn derive_networked(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+    let optional_name = syn::Ident::new(&format!("{}Optional", name), name.span());
 
-//     let fields = if let Data::Struct(data) = &input.data {
-//         if let Fields::Named(fields) = &data.fields {
-//             &fields.named
-//         } else {
-//             panic!("Networked can only be applied to structs with named fields");
-//         }
-//     } else {
-//         panic!("Networked can only be applied to structs");
-//     };
+    let data = if let Data::Struct(data) = &input.data {
+        data
+    } else {
+        panic!("#[derive(Networked)] can only be used on structs");
+    };
 
-//     let networked_fields = fields.iter().map(|field| {
-//         // Check if the field is a primitive type
-//         panic!("Not implemented");
-        
+    let fields = if let Fields::Named(fields) = &data.fields {
+        &fields.named
+    } else {
+        panic!("#[derive(Networked)] can only be used on structs with named fields");
+    };
 
-//         if has_attr(&field.attrs, "private") {
-//             // Make sure its an Option
-//             if let Type::Path(path) = &field.ty {
-//                 if let Some(ident) = path.path.get_ident() {
-//                     if ident != "Option" {
-//                         panic!("Private fields must be of type `Option`");
-//                     }
-//                 }
-//                 panic!("Private fields must be of type `Option`");
-//             }
-//             panic!("Private fields must be of type `Option`");
-//             FieldVisibility::Private(field.clone())
-//         } else {
-//             FieldVisibility::Public(field.clone())
-//         }
-//     });
+    let optional_fields = fields.iter().map(|f| {
+        let field_name = &f.ident;
+        let field_type = &f.ty;
+        quote! {
+            pub #field_name: Option<<#field_type as Networked>::Optional>
+        }
+    });
 
-//     let expanded = quote! {
-//         impl websocket_rooms::core::Networked for #name {
-//             fn serialize(&self) -> Vec<u8> {
-//                 bincode::serialize(self).unwrap()
-//             }
-    
-//             fn update_from(&mut self, data: &[u8]) {
-//                 *self = bincode::deserialize(data).unwrap();
-//             }
+    let update_from_optional_impl = fields.iter().map(|f| {
+        let field_name = &f.ident;
+        quote! {
+            self.#field_name.update_from_optional(optional.#field_name);
+        }
+    });
 
-//             fn is_different(&self) -> bool {
-//                 false
-//             }
-//         };
-//     };
+    let differences_with_impl = fields.iter().map(|f| {
+        let field_name = &f.ident;
 
-//     TokenStream::from(expanded)
-// }
+        quote! {
+            if let Some(diff) = self.#field_name.differences_with(&other.#field_name) {
+                let optional = optional.get_or_insert_with(Self::Optional::default);
+                optional.#field_name = Some(diff);
+            }
+        }
+    });
+
+    let into_optional_impl = fields.iter().map(|f| {
+        let field_name = &f.ident;
+        quote! {
+            #field_name: self.#field_name.into_optional()
+        }
+    });
+
+    // Removing the unwrap is ideal but would require a different approach to handling fields that are not Option
+    let from_optional_impl = fields.iter().map(|f| {
+        let field_name = &f.ident;
+        let field_type = &f.ty;
+        quote! {
+            #field_name: <#field_type as Networked>::from_optional(optional.#field_name.unwrap())
+        }
+    });
+
+    let expanded = quote! {
+        #[derive(Serialize, Deserialize, Default, Clone, Copy, Debug)]
+        pub struct #optional_name {
+            #(#optional_fields,)*
+        }
+
+        impl websocket_rooms::core::Networked for #name {
+            type Optional = #optional_name;
+
+            fn update_from_optional(&mut self, optional: Option<Self::Optional>) {
+                if let Some(optional) = optional {
+                    #(#update_from_optional_impl)*
+                }
+            }
+
+            fn differences_with(&self, other: &Self) -> Option<Self::Optional> {
+                let mut optional: Option<Self::Optional> = None;
+                #(#differences_with_impl)*
+                optional
+            }
+
+            fn into_optional(&self) -> Option<Self::Optional> {
+                Some(Self::Optional {
+                    #(#into_optional_impl,)*
+                })
+            }
+
+            fn from_optional(optional: Self::Optional) -> Self {
+                Self {
+                    #(#from_optional_impl,)*
+                }
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}

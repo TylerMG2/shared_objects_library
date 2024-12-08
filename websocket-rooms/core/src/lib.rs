@@ -17,16 +17,17 @@ pub trait RoomFields {
 pub trait Networked {
     type Optional: Serialize + DeserializeOwned + Copy;
 
-    fn from_optional(optional: Self::Optional) -> Self;
-
-    fn update_from_optional(&mut self, optional: Self::Optional);
+    fn update_from_optional(&mut self, optional: Option<Self::Optional>);
 
     // Returns an option to indicate if there are any differences between the two structs
     // If there are differences it should return Some with the differences, if there are no differences it should return None
     fn differences_with(&self, other: &Self) -> Option<Self::Optional>;
 
     // Convert this into an optional
-    fn into_optional(&self) -> Self::Optional;
+    fn into_optional(&self) -> Option<Self::Optional>;
+
+    // Convert an optional into this
+    fn from_optional(optional: Self::Optional) -> Self;
 }
 
 impl<T, const N: usize> Networked for [T; N]
@@ -36,9 +37,9 @@ where
 {
     type Optional = [Option<T::Optional>; N];
 
-    fn update_from_optional(&mut self, optional: Self::Optional) {
-        for (this, optional) in self.iter_mut().zip(optional.iter()) {
-            if let Some(optional) = optional {
+    fn update_from_optional(&mut self, optional: Option<Self::Optional>) {
+        if let Some(optional) = optional {
+            for (this, optional) in self.iter_mut().zip(optional.iter()) {
                 this.update_from_optional(*optional);
             }
         }
@@ -46,23 +47,22 @@ where
 
     fn differences_with(&self, other: &Self) -> Option<Self::Optional> {
         let mut optional: Option<Self::Optional> = None;
+    
         for (index, (x, y)) in self.iter().zip(other.iter()).enumerate() {
             if let Some(diff) = x.differences_with(y) {
-                if optional.is_none() {
-                    optional = Some([None; N]);
-                }
-                optional.as_mut().unwrap()[index] = Some(diff);
+                optional.get_or_insert_with(|| [None; N])[index] = Some(diff);
             }
-        };
+        }
+    
         optional
     }
 
-    fn into_optional(&self) -> Self::Optional {
+    fn into_optional(&self) -> Option<Self::Optional> {
         let mut optional = [None; N];
         for (index, this) in self.iter().enumerate() {
-            optional[index] = Some(this.into_optional());
+            optional[index] = this.into_optional();
         }
-        optional
+        Some(optional)
     }
 
     // This is the reason the array type must implement default
@@ -77,7 +77,6 @@ where
     }
 }
 
-// Let implement it for option type
 impl<T: Networked + Copy> Networked for Option<T> {
     type Optional = Option<T::Optional>;
 
@@ -85,12 +84,14 @@ impl<T: Networked + Copy> Networked for Option<T> {
         optional.map(T::from_optional)
     }
 
-    fn update_from_optional(&mut self, optional: Self::Optional) {
-        match (self.as_mut(), optional) {
-            (Some(this), Some(optional)) => this.update_from_optional(optional),
-            (None, Some(optional)) => *self = Some(T::from_optional(optional)),
-            (Some(_), None) => *self = None,
-            (None, None) => (),
+    fn update_from_optional(&mut self, optional: Option<Self::Optional>) {
+        if let Some(optional) = optional {
+            match (self.as_mut(), optional) {
+                (Some(this), Some(other)) => this.update_from_optional(Some(other)),
+                (Some(this), None) => *self = None,
+                (None, Some(other)) => *self = Some(T::from_optional(other)),
+                (None, None) => {},
+            }
         }
     }
 
@@ -106,13 +107,13 @@ impl<T: Networked + Copy> Networked for Option<T> {
                     None
                 }
             },
-            (None, Some(other)) => Some(Some(other.into_optional())),
+            (None, Some(other)) => Some(other.into_optional()),
             (Some(_), None) => Some(None),
             (None, None) => None,
         }
     }
 
-    fn into_optional(&self) -> Self::Optional {
+    fn into_optional(&self) -> Option<Self::Optional> {
         match self {
             Some(this) => Some(this.into_optional()),
             None => None,
@@ -120,7 +121,6 @@ impl<T: Networked + Copy> Networked for Option<T> {
     }
 }
 
-// Implement networked for primitive types
 macro_rules! impl_networked {
     ($($t:ty),*) => {
         $(
@@ -131,8 +131,10 @@ macro_rules! impl_networked {
                     optional
                 }
 
-                fn update_from_optional(&mut self, optional: Self::Optional) {
-                    *self = optional;
+                fn update_from_optional(&mut self, optional: Option<Self::Optional>) {
+                    if let Some(optional) = optional {
+                        *self = optional;
+                    }
                 }
 
                 fn differences_with(&self, other: &Self) -> Option<Self::Optional> {
@@ -143,8 +145,8 @@ macro_rules! impl_networked {
                     }
                 }
 
-                fn into_optional(&self) -> Self::Optional {
-                    *self
+                fn into_optional(&self) -> Option<Self::Optional> {
+                    Some(*self)
                 }
             }
         )*
