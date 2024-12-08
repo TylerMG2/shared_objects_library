@@ -1,72 +1,59 @@
+use helpers::{as_array, assert_has_named_fields, assert_is_struct, assert_type, get_field_with_attribute, get_fields_with_attribute};
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Expr, Field, Fields, Ident, Lit, Type};
+use syn::{parse_macro_input, DeriveInput, Expr, Lit};
 
 mod networked;
+mod helpers;
 
 #[proc_macro_derive(PlayerFields, attributes(name, disconnected))]
 pub fn derive_player_fields(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
 
-    let mut name_field = None;
-    let mut disconnected_field = None;
-    let mut name_length = None;
+    let data = assert_is_struct(&input.data).expect("PlayerFields can only be applied to structs");
+    let fields = assert_has_named_fields(&data.fields).expect("PlayerFields can only be applied to structs with named fields");
 
-    // Assert its a struct and find the fields annotated with `#[name]` and `#[disconnected]` and make sure they are the correct type
-    // Not sure if theres a cleaner way to do this type checking
-    if let syn::Data::Struct(ref data) = input.data {
-        for field in &data.fields {
-            if has_attr(&field.attrs, "name") {
-                if name_field.is_some() { 
-                    panic!("Only one field can be annotated with `#[name]`"); 
-                }
-                let (_, len) = is_fixed_size_array(&field.ty).expect("Field annotated with `#[name]` must be a fixed size array");
-                name_length = Some(len);
-                name_field = Some(field.ident.clone());
+    let name_field = get_field_with_attribute(&fields, "name").unwrap_or_else(|e| panic!("{}", e));
+    let name_field_name = name_field.ident.as_ref().unwrap();
+    let name_field_array = as_array(name_field).expect("Field annotated with `#[name]` must be a fixed size array");
+    let name_length = if let Expr::Lit(lit) = &name_field_array.len {
+        if let Lit::Int(lit) = &lit.lit {
+            let length = lit.base10_parse::<usize>().unwrap();
+            if length == 0 {
+                panic!("Field annotated with `#[name]` must be a fixed size array with a length greater than 0");
             }
-
-            if has_attr(&field.attrs, "disconnected") {
-                if disconnected_field.is_some() { 
-                    panic!("Only one field can be annotated with `#[disconnected]`"); 
-                }
-
-                if !is_type(&field.ty, "bool") {
-                    panic!("Field annotated with `#[disconnected]` must be of type `bool`");
-                }
-
-                disconnected_field = Some(field.ident.clone());
-            }
+            length
+        } else {
+            panic!("Field annotated with `#[name]` must be a fixed size array with a literal length");
         }
     } else {
-        panic!("PlayerFields can only be applied to structs");
-    }
-
-    // Ensure both fields were found
-    let name_field = name_field.expect("Missing `#[name]` field");
-    let disconnected_field = disconnected_field.expect("Missing `#[disconnected]` field");
+        panic!("Field annotated with `#[name]` must be a fixed size array with a literal length");
+    };
+    
+    let disconnected_field = get_field_with_attribute(&fields, "disconnected").unwrap_or_else(|e| panic!("{}", e));
+    let disconnected_field_name = disconnected_field.ident.as_ref().unwrap();
+    assert_type(disconnected_field, "bool", "Field annotated with `#[disconnected]` must be of type `bool`");
 
     // Generate methods to get and set the name and disconnected fields
-    let name_length = name_length.unwrap();
     let expanded = quote! {
         impl websocket_rooms::core::PlayerFields for #name {
-            fn name(&self) -> &[u8] {
-                &self.#name_field
+            type Name = [u8; #name_length];
+
+            fn name(&self) -> Self::Name {
+                self.#name_field_name
             }
 
-            fn set_name(&mut self, name: &[u8]) {
-                let mut new_name = [0u8; #name_length];
-                let len = name.len().min(new_name.len());
-                new_name[..len].copy_from_slice(&name[..len]); 
-                self.#name_field = new_name;
+            fn set_name(&mut self, name: Self::Name) {
+                self.#name_field_name = name;
             }
 
             fn disconnected(&self) -> bool {
-                self.#disconnected_field
+                self.#disconnected_field_name
             }
 
             fn set_disconnected(&mut self, disconnected: bool) {
-                self.#disconnected_field = disconnected;
+                self.#disconnected_field_name = disconnected;
             }
         }
     };
@@ -79,91 +66,40 @@ pub fn derive_room_fields(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
 
-    let mut host_field = None;
-    let mut players_field = None;
-    let mut player_array_type = None;
+    let data = assert_is_struct(&input.data).expect("RoomFields can only be applied to structs");
+    let fields = assert_has_named_fields(&data.fields).expect("RoomFields can only be applied to structs with named fields");
 
-    // Process fields
-    if let Data::Struct(ref data) = input.data {
-        for field in &data.fields {
-            if has_attr(&field.attrs, "host") {
-                if host_field.is_some() { 
-                    panic!("Only one field can be annotated with `#[host]`"); 
-                }
+    let host_field = get_field_with_attribute(&fields, "host").unwrap_or_else(|e| panic!("{}", e));
+    let host_field_name = host_field.ident.as_ref().unwrap();
+    assert_type(host_field, "u8", "Field annotated with `#[host]` must be of type `u8`");
 
-                if !is_type(&field.ty, "u8") {
-                    panic!("Field annotated with `#[host]` must be of type `u8`");
-                }
-                host_field = Some(field.ident.clone());
-            }
-
-            if has_attr(&field.attrs, "players") {
-                if players_field.is_some() { 
-                    panic!("Only one field can be annotated with `#[players]`"); 
-                }
-                let (ident, _) = is_fixed_size_array(&field.ty).expect("Field annotated with `#[players]` must be a fixed size array");
-                player_array_type = Some(ident);
-                players_field = Some(field.ident.clone());
-            }
-        }
-    } else {
-        panic!("RoomFields can only be applied to structs");
-    }
-
-    // Ensure fields exist
-    let host_field = host_field.expect("Missing `#[host]` field");
-    let players_field = players_field.expect("Missing `#[players]` field");
-    let player_array_type = player_array_type.expect("Failed to determine player array type");
+    let players_field = get_field_with_attribute(&fields, "players").unwrap_or_else(|e| panic!("{}", e));
+    let players_field_name = players_field.ident.as_ref().unwrap();
+    let players_field_array = as_array(players_field).expect("Field annotated with `#[players]` must be a fixed size array");
+    let player_array_type = *players_field_array.elem.clone();
 
     // Generate the RoomFields implementation
     let expanded = quote! {
         impl websocket_rooms::core::RoomFields for #name {
             fn host(&self) -> u8 {
-                self.#host_field
+                self.#host_field_name
             }
 
             fn set_host(&mut self, host: u8) {
-                self.#host_field = host;
+                self.#host_field_name = host;
             }
 
             fn players(&self) -> &[#player_array_type] {
-                &self.#players_field
+                &self.#players_field_name
             }
 
             fn players_mut(&mut self) -> &mut [#player_array_type] {
-                &mut self.#players_field
+                &mut self.#players_field_name
             }
         }
     };
 
     TokenStream::from(expanded)
-}
-
-fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
-    attrs.iter().any(|a| a.path().is_ident(name))
-}
-
-fn is_fixed_size_array(ty: &Type) -> Option<(Ident, usize)> {
-    if let Type::Array(array) = ty {
-        if let Type::Path(path) = &*array.elem {
-            // Get type of array
-            let ident = path.path.get_ident().unwrap();
-
-            if let Expr::Lit(lit) = &array.len {
-                if let Lit::Int(lit_int) = &lit.lit {
-                    return Some((ident.clone(), lit_int.base10_parse::<usize>().unwrap()));
-                }
-            }
-        }
-    }
-    None
-}
-
-fn is_type(ty: &Type, name: &str) -> bool {
-    if let Type::Path(path) = ty {
-        return path.path.is_ident(name);
-    }
-    false
 }
 
 // TODO: Add support for non-networked fields maybe using #[serde(skip)], for now all fields are networked and private fields
@@ -173,17 +109,10 @@ pub fn derive_networked(input: TokenStream) -> TokenStream {
     let name = &input.ident;
     let optional_name = syn::Ident::new(&format!("{}Optional", name), name.span());
 
-    let data = if let Data::Struct(data) = &input.data {
-        data
-    } else {
-        panic!("#[derive(Networked)] can only be used on structs");
-    };
+    let data = assert_is_struct(&input.data).expect("Networked can only be applied to structs");
+    let fields = assert_has_named_fields(&data.fields).expect("Networked can only be applied to structs with named fields");
 
-    let fields = if let Fields::Named(fields) = &data.fields {
-        &fields.named
-    } else {
-        panic!("#[derive(Networked)] can only be used on structs with named fields");
-    };
+    let _private_fields = get_fields_with_attribute(&fields, "private");
 
     let optional_fields = fields.iter().map(|f| {
         let field_name = &f.ident;
@@ -218,12 +147,12 @@ pub fn derive_networked(input: TokenStream) -> TokenStream {
         }
     });
 
-    // Removing the unwrap is ideal but would require a different approach to handling fields that are not Option
+    // Removing the unwrap is ideal but not sure how to handle this yet
     let from_optional_impl = fields.iter().map(|f| {
         let field_name = &f.ident;
         let field_type = &f.ty;
         quote! {
-            #field_name: <#field_type as Networked>::from_optional(optional.#field_name.unwrap())
+            #field_name: <#field_type as Networked>::from_optional(optional.#field_name.unwrap_or_default())
         }
     });
 

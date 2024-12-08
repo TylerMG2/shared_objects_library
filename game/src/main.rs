@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use websocket_rooms::{core::{PlayerFields, RoomFields, Networked}, proc_macros::{PlayerFields, RoomFields, Networked}};
+use websocket_rooms::{core::{RoomFields, Networked}, proc_macros::{PlayerFields, RoomFields, Networked}};
 
 fn main() {
     let test = u8::from_optional(6);
@@ -51,31 +51,23 @@ fn main() {
     //let diff = test_player_array.differences_with(&test_player_array); // This doesn't work since the Player struct doesn't implement Networked
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Networked, Default, Debug)]
+#[derive(Clone, PlayerFields, Copy, Serialize, Deserialize, Networked, Default, Debug)]
 struct Player {
+    #[name]
     test: [u8; 20],
 
+    #[disconnected]
     disconnected: bool,
 
-    //#[private] // This field should only be sent to the owner of the player, the macro should also enforce this is an Option since some clients may not have this field
+    #[private] // This field should only be sent to the owner of the player, the macro should also enforce this is an Option since some clients may not have this field
     cards: u8,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Networked, Debug)]
+#[derive(Clone, RoomFields, Copy, Serialize, Deserialize, Networked, Debug)]
 struct Room {
+    #[players]
     players: [Option<Player>; 8],
 
+    #[host]
     host: u8,
-}
-
-fn test(player: &mut impl PlayerFields) {
-    println!("{:?}", player.name());
-    println!("{:?}", player.disconnected());
-
-    player.set_name(b"helloaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-
-    println!("{:?}", player.name());
-
-    player.set_name(b"t");
-    println!("{:?}", player.name());
 }
