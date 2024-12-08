@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use websocket_rooms::{core::{PlayerFields, RoomFields}, proc_macros::{Networked, PlayerFields, RoomFields}};
+use websocket_rooms::{core::{PlayerFields, RoomFields, Networked}, proc_macros::{PlayerFields, RoomFields}};
 
 fn main() {
     let mut player = Player {
@@ -8,38 +8,40 @@ fn main() {
         cards: 0,
     };
 
-    test(&mut player);
+    let test = u8::from_optional(6);
+    println!("{:?}", test);
 
-    let mut room = Room {
-        players: [player; 8],
-        host: 0,
-    };
+    let diff = 8.differences_with(&8);
+    println!("{:?}", diff);
 
-    println!("{:?}", room.players[0].name());
+    let mut test2 = [None; 8];
+    let mut test2_diff = [Some(6); 8];
+    test2_diff[0] = None;
 
-    room.players_mut()[0].set_name(b"hello");
+    let diff = test2.differences_with(&test2_diff);
+    println!("{:?}", diff);
 
-    println!("{:?}", room.players[0].name());
+    let bytes = bincode::serialize(&diff).unwrap();
+    println!("Number of bytes: {}", bytes.len());
+
+    let test2_update = test2.update_from_optional(diff.unwrap());
+    println!("{:?}", test2);
 }
 
-#[derive(PlayerFields, Clone, Copy, Networked, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 struct Player {
-    #[name]
     test: [u8; 20],
 
-    #[disconnected]
     disconnected: bool,
 
-    #[private] // This field should only be sent to the owner of the player, the macro should also enforce this is an Option since some clients may not have this field
+    //#[private] // This field should only be sent to the owner of the player, the macro should also enforce this is an Option since some clients may not have this field
     cards: u8,
 }
 
-#[derive(Clone, Copy, Networked, RoomFields, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 struct Room {
-    #[players]
     players: [Player; 8],
 
-    #[host]
     host: u8,
 }
 

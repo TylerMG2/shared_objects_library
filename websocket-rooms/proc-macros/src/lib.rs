@@ -2,6 +2,8 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Expr, Field, Fields, Ident, Lit, Type};
 
+mod networked;
+
 #[proc_macro_derive(PlayerFields, attributes(name, disconnected))]
 pub fn derive_player_fields(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -164,76 +166,113 @@ fn is_type(ty: &Type, name: &str) -> bool {
     false
 }
 
-enum FieldVisibility {
-    Public,
-    Private,
-}
 
-enum FieldType {
-    Primitive(Type),
-    Networked,
-    Array(Box<FieldType>),
-}
+// #[proc_macro_derive(Networked, attributes(private))]
+// pub fn derive_networked(input: TokenStream) -> TokenStream {
+//     let input = parse_macro_input!(input as DeriveInput);
+//     let name = &input.ident;
 
-struct FieldInfo {
-    ident: Ident,
-    visibility: FieldVisibility,
-    ty: FieldType,
-}
+//     // Add copies of each field to the struct prefixed with '__' to store the previous value
+//     let fields = if let Data::Struct(data) = &input.data {
+//         if let Fields::Named(fields) = &data.fields {
+//             &fields.named
+//         } else {
+//             panic!("Networked can only be applied to structs with named fields");
+//         }
+//     } else {
+//         panic!("Networked can only be applied to structs");
+//     };
+    
+//     let networked_fields = fields.iter().map(|field| {
+//         if has_attr(&field.attrs, "private") {
+//             // Make sure its an Option
+//             if let Type::Path(path) = &field.ty {
+//                 if let Some(ident) = path.path.get_ident() {
+//                     if ident != "Option" {
+//                         panic!("Private fields must be of type `Option`");
+//                     }
+//                 }
+//                 panic!("Private fields must be of type `Option`");
+//             }
+//             panic!("Private fields must be of type `Option`");
+//         }
+//         field.clone()
+//     });
+
+//     let expanded = quote! {
+//         impl websocket_rooms::core::Networked for #name {
+//             type Optional = #name;
+
+//             fn serialize(&self) -> Vec<u8> {
+//                 bincode::serialize(self).unwrap()
+//             }
+
+//             fn update_from(&mut self, data: &[u8]) {
+//                 *self = bincode::deserialize(data).unwrap();
+//             }
+
+//             fn is_different(&self) -> bool {
+//                 false
+//             }
+//         };
+//     };
+
+//     TokenStream::from(expanded)
+// }
 
 // TODO: Add support for non-networked fields maybe using #[serde(skip)], for now all fields are networked and private fields
-#[proc_macro_derive(Networked, attributes(private))]
-pub fn derive_networked(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let name = &input.ident;
+// #[proc_macro_derive(Networked, attributes(private))]
+// pub fn derive_networked(input: TokenStream) -> TokenStream {
+//     let input = parse_macro_input!(input as DeriveInput);
+//     let name = &input.ident;
 
-    let fields = if let Data::Struct(data) = &input.data {
-        if let Fields::Named(fields) = &data.fields {
-            &fields.named
-        } else {
-            panic!("Networked can only be applied to structs with named fields");
-        }
-    } else {
-        panic!("Networked can only be applied to structs");
-    };
+//     let fields = if let Data::Struct(data) = &input.data {
+//         if let Fields::Named(fields) = &data.fields {
+//             &fields.named
+//         } else {
+//             panic!("Networked can only be applied to structs with named fields");
+//         }
+//     } else {
+//         panic!("Networked can only be applied to structs");
+//     };
 
-    let networked_fields = fields.iter().map(|field| {
-        // Check if the field is a primitive type
-        panic!("Not implemented");
+//     let networked_fields = fields.iter().map(|field| {
+//         // Check if the field is a primitive type
+//         panic!("Not implemented");
         
 
-        if has_attr(&field.attrs, "private") {
-            // Make sure its an Option
-            if let Type::Path(path) = &field.ty {
-                if let Some(ident) = path.path.get_ident() {
-                    if ident != "Option" {
-                        panic!("Private fields must be of type `Option`");
-                    }
-                }
-                panic!("Private fields must be of type `Option`");
-            }
-            panic!("Private fields must be of type `Option`");
-            FieldVisibility::Private(field.clone())
-        } else {
-            FieldVisibility::Public(field.clone())
-        }
-    });
+//         if has_attr(&field.attrs, "private") {
+//             // Make sure its an Option
+//             if let Type::Path(path) = &field.ty {
+//                 if let Some(ident) = path.path.get_ident() {
+//                     if ident != "Option" {
+//                         panic!("Private fields must be of type `Option`");
+//                     }
+//                 }
+//                 panic!("Private fields must be of type `Option`");
+//             }
+//             panic!("Private fields must be of type `Option`");
+//             FieldVisibility::Private(field.clone())
+//         } else {
+//             FieldVisibility::Public(field.clone())
+//         }
+//     });
 
-    let expanded = quote! {
-        impl websocket_rooms::core::Networked for #name {
-            fn serialize(&self) -> Vec<u8> {
-                bincode::serialize(self).unwrap()
-            }
+//     let expanded = quote! {
+//         impl websocket_rooms::core::Networked for #name {
+//             fn serialize(&self) -> Vec<u8> {
+//                 bincode::serialize(self).unwrap()
+//             }
     
-            fn update_from(&mut self, data: &[u8]) {
-                *self = bincode::deserialize(data).unwrap();
-            }
+//             fn update_from(&mut self, data: &[u8]) {
+//                 *self = bincode::deserialize(data).unwrap();
+//             }
 
-            fn is_different(&self) -> bool {
-                false
-            }
-        };
-    };
+//             fn is_different(&self) -> bool {
+//                 false
+//             }
+//         };
+//     };
 
-    TokenStream::from(expanded)
-}
+//     TokenStream::from(expanded)
+// }
