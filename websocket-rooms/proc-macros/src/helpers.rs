@@ -1,4 +1,4 @@
-use syn::{punctuated::Punctuated, token::Comma, Attribute, DataStruct, Field, TypeArray};
+use syn::{punctuated::Punctuated, token::Comma, Attribute, DataStruct, Field, Type, TypeArray};
 
 pub fn assert_is_struct(data: &syn::Data) -> Result<&DataStruct, String> {
     if let syn::Data::Struct(data) = data {
@@ -60,3 +60,18 @@ fn has_attr(attrs: &[Attribute], name: &str) -> bool {
     })
 }
 
+pub fn get_option_inner_type(ty: &Type) -> Option<&syn::Type> {
+    if let syn::Type::Path(path) = &ty {
+        if let Some(segment) = path.path.segments.last() {
+            if segment.ident == "Option" {
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                    if let syn::GenericArgument::Type(ty) = &args.args[0] {
+                        return Some(ty);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}

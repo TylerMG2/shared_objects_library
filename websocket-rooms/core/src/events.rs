@@ -2,7 +2,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{Networked, RoomFields};
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub enum ServerEvent<T> {
     RoomJoined,
     PlayerJoined,
@@ -18,7 +18,7 @@ pub enum ServerEvent<T> {
 #[derive(Serialize, Deserialize)]
 pub struct ServerMessage<GameEvent, Room: Networked + RoomFields + DeserializeOwned> {
     pub event: ServerEvent<GameEvent>,
-    pub room: Room::Optional
+    pub room: Option<Room::Optional>
 }
 
 #[derive(Serialize, Deserialize, Default)]

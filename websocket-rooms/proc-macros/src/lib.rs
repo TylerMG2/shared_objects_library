@@ -1,4 +1,4 @@
-use helpers::{as_array, assert_has_named_fields, assert_is_struct, assert_type, get_field_with_attribute, get_fields_with_attribute};
+use helpers::{as_array, assert_has_named_fields, assert_is_struct, assert_type, get_field_with_attribute, get_fields_with_attribute, get_option_inner_type};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Expr, Lit};
@@ -76,11 +76,13 @@ pub fn derive_room_fields(input: TokenStream) -> TokenStream {
     let players_field = get_field_with_attribute(&fields, "players").unwrap_or_else(|e| panic!("{}", e));
     let players_field_name = players_field.ident.as_ref().unwrap();
     let players_field_array = as_array(players_field).expect("Field annotated with `#[players]` must be a fixed size array");
-    let player_array_type = *players_field_array.elem.clone();
+    let player_array_type = get_option_inner_type(&*players_field_array.elem);
 
     // Generate the RoomFields implementation
     let expanded = quote! {
         impl websocket_rooms::core::RoomFields for #name {
+            type Player = #player_array_type;
+
             fn host(&self) -> u8 {
                 self.#host_field_name
             }
@@ -89,11 +91,11 @@ pub fn derive_room_fields(input: TokenStream) -> TokenStream {
                 self.#host_field_name = host;
             }
 
-            fn players(&self) -> &[#player_array_type] {
+            fn players(&self) -> &[Option<Self::Player>] {
                 &self.#players_field_name
             }
 
-            fn players_mut(&mut self) -> &mut [#player_array_type] {
+            fn players_mut(&mut self) -> &mut [Option<Self::Player>] {
                 &mut self.#players_field_name
             }
         }

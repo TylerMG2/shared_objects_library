@@ -63,7 +63,7 @@ struct Player {
     cards: u8,
 }
 
-#[derive(Clone, RoomFields, Copy, Serialize, Deserialize, Networked, Debug)]
+#[derive(Clone, RoomFields, Copy, Serialize, Deserialize, Networked, Default, Debug)]
 struct Room {
     #[players]
     players: [Option<Player>; 8],
