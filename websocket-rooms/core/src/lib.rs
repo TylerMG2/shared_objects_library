@@ -18,7 +18,7 @@ pub trait PlayerFields {
 }
 
 pub trait RoomFields {
-    type Player: PlayerFields;
+    type Player: PlayerFields + Default;
 
     fn players(&self) -> &[Option<Self::Player>];
     fn players_mut(&mut self) -> &mut [Option<Self::Player>];
@@ -28,7 +28,7 @@ pub trait RoomFields {
 
 pub trait RoomLogic 
 where 
-    Self::Room: RoomFields + Networked + Serialize + DeserializeOwned + Copy,
+    Self::Room: RoomFields + Networked + Serialize + DeserializeOwned + Copy + Default,
     Self::ServerGameEvent: Serialize + DeserializeOwned + Clone + Default,
     Self::ClientGameEvent: Serialize + DeserializeOwned + Clone + Default
 {
