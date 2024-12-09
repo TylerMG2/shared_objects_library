@@ -18,19 +18,21 @@ where
     T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned,
 {
     pub room: T,
-    pub previous_room: T,
-    pub connections: [Option<Connection>; MAX_PLAYERS],
+    previous_room: T,
+    connections: [Option<Connection>; MAX_PLAYERS],
+    handle_event: fn(&mut Self, usize, &ClientEvent<T::ClientGameEvent>),
 }
 
 impl<T, const MAX_PLAYERS: usize> ServerRoom<T, MAX_PLAYERS> 
 where 
     T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned,
 {
-    pub fn new(room: T) -> Self {
+    pub fn new(room: T, handle_event: fn(&mut Self, usize, &ClientEvent<T::ClientGameEvent>)) -> Self {
         Self {
             room,
             previous_room: room,
             connections: [const { None }; MAX_PLAYERS],
+            handle_event,
         }
     }
 
@@ -45,15 +47,14 @@ where
     }
 
     pub fn handle_event(&mut self, index: usize, event: &ClientEvent<T::ClientGameEvent>) {
-        if self.room.validate_action(index, event) {
-            //TODO: Call a provided function to update the room state
-            // Also ideally we should pass just the clients defined events to this function
-            // i.e ClientGameEvent and not the full ClientEvent since those should be handled
-            // already
+        if !self.room.validate_event(index, event) {
+            return;
         }
+
+        (self.handle_event)(self, index, event);
     }
 
-    pub fn update_all(&mut self, event: &ServerEvent<T::ServerGameEvent>) {
+    pub fn update_all_server_event(&mut self, event: &ServerEvent<T::ServerGameEvent>) {
         let changes = self.room.differences_with(&self.previous_room);
 
         for (i, _) in self.connections.iter().enumerate() {
@@ -64,7 +65,7 @@ where
     }
 
     // Sends the room changes to all clients except the one at the given index
-    pub fn update_except(&mut self, index: usize, event: &ServerEvent<T::ServerGameEvent>) {
+    fn update_except_server_event(&mut self, index: usize, event: &ServerEvent<T::ServerGameEvent>) {
         let changes = self.room.differences_with(&self.previous_room);
 
         for (i, _) in self.connections.iter().enumerate() {
@@ -78,7 +79,7 @@ where
 
     // Sends the room changes to just one client
     // Should only be used for private events and if just private fields have changed
-    pub fn update_private(&mut self, index: usize, event: &ServerEvent<T::ServerGameEvent>) {
+    pub fn update_one_server_event(&mut self, index: usize, event: &ServerEvent<T::ServerGameEvent>) {
         let changes = self.room.differences_with(&self.previous_room);
         self.send_message(index, event, changes); // To stop desync issues, we should only send the changes to private fields for the player at this index
         self.previous_room = self.room;
@@ -88,8 +89,12 @@ where
         if let Some(connection) = &self.connections[index] {
             if let Some(sender) = &connection.sender {
 
-                //TODO: use the index to call a .privatised() method on the message room optional
-                // which will remove all fields that are marked as private and not owned by current player
+                // TODO: use the index to call a .privatised() method on the message room optional
+                // which will remove all fields that are marked as private and not owned by current player (set to None)
+                // Ideally this should also set whole things to None if this means there aren't any changes.
+                // For example lets say the server updates a players private field, but it attempts to send the changes to all players
+                // Only the player who owns the private field should receive the changes, the other players should receive None for that
+                // whole array index.
 
                 let message = ServerMessage::<T::ServerGameEvent, T> {
                     event: event.clone(),
