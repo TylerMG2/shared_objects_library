@@ -29,8 +29,8 @@ pub trait RoomFields {
 pub trait RoomLogic 
 where 
     Self::Room: RoomFields + Networked + Serialize + DeserializeOwned + Copy + Default,
-    Self::ServerGameEvent: Serialize + DeserializeOwned + Clone + Default,
-    Self::ClientGameEvent: Serialize + DeserializeOwned + Clone + Default
+    Self::ServerGameEvent: Serialize + DeserializeOwned + Clone + Default + Send,
+    Self::ClientGameEvent: Serialize + DeserializeOwned + Clone + Default + Send,
 {
     type Room;
     type ServerGameEvent;

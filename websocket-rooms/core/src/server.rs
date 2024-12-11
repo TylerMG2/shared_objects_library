@@ -17,7 +17,7 @@ pub struct Connection {
 
 pub struct ServerRoom<T, const MAX_PLAYERS: usize> 
 where 
-    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default,
+    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default + Send + Sync,
 {
     pub room: T,
     previous_room: T,
@@ -27,7 +27,7 @@ where
 
 impl<T, const MAX_PLAYERS: usize> ServerRoom<T, MAX_PLAYERS> 
 where 
-    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default,
+    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default + Send + Sync,
 {
     pub fn new(handle_event: HandleEventFn<T, MAX_PLAYERS>) -> Self {
         let mut room = T::default();
@@ -90,7 +90,7 @@ where
         self.previous_room = self.room;
     }
 
-    fn send_message(&self, index: usize, event: &ServerEvent<T::ServerGameEvent>, changes: Option<T::Optional>) {
+    pub fn send_message(&self, index: usize, event: &ServerEvent<T::ServerGameEvent>, changes: Option<T::Optional>) {
         if let Some(connection) = &self.connections[index] {
             if let Some(sender) = &connection.sender {
 
@@ -121,7 +121,7 @@ pub struct RoomJoinQuery {
 #[derive(Clone)]
 pub struct Rooms<T, const MAX_PLAYERS: usize> 
 where 
-    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default,
+    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default + Send + Sync,
 {
     rooms: RoomMap<T, MAX_PLAYERS>,
     handle_event: HandleEventFn<T, MAX_PLAYERS>,
@@ -129,7 +129,7 @@ where
 
 impl <T, const MAX_PLAYERS: usize> Rooms<T, MAX_PLAYERS> 
 where 
-    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default
+    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default + Send + Sync + 'static,
 {
     pub fn new(handle_event: HandleEventFn<T, MAX_PLAYERS>) -> Self {
         Self {
@@ -151,7 +151,8 @@ where
                 Ok(player_index) => {
                     let rooms = self.rooms.read().await;
                     let room = rooms.get(&query.code).expect("Room should of been created in handle_connect");
-                    room.update_one_server_event(player_index, &ServerEvent::RoomJoined);
+                    let room_optional = room.room.into_optional();
+                    room.send_message(player_index, &ServerEvent::RoomJoined, room_optional);
                     player_index
                 },
                 Err(e) => {
@@ -166,7 +167,7 @@ where
         let recv_query = query.clone();
 
         let mut send_task = tokio::spawn(send_task(sender, rx));
-        let mut recv_task = tokio::spawn(receive_task(recv_state, recv_query, player_index, receiver)); // TODO: Fix this with a static lifetime maybe?
+        let mut recv_task = tokio::spawn(receive_task(recv_state, recv_query, player_index, receiver));
 
         tokio::select! {
             _ = &mut send_task => recv_task.abort(),
@@ -278,7 +279,7 @@ async fn receive_task<T, const MAX_PLAYERS: usize>(
     mut receiver: SplitStream<WebSocket>,
 ) 
 where
-    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default + 'static,
+    T: RoomLogic + RoomFields + Networked + Copy + Serialize + DeserializeOwned + Default + Send + Sync + 'static,
 {
     while let Some(msg) = receiver.next().await {
         let msg = match msg {
