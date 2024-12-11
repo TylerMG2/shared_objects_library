@@ -1,57 +1,9 @@
+use axum::{extract::{Query, State, WebSocketUpgrade}, response::IntoResponse, routing::get, Router};
 use serde::{Deserialize, Serialize};
-use websocket_rooms::{core::{RoomFields, Networked}, proc_macros::{PlayerFields, RoomFields, Networked}};
+use tokio::net::TcpListener;
+use websocket_rooms::{core::{ClientEvent, Networked, RoomJoinQuery, RoomLogic, Rooms, ServerEvent, ServerRoom}, proc_macros::{Networked, PlayerFields, RoomFields}};
 
-fn main() {
-    let test = u8::from_optional(6);
-    println!("{:?}", test);
-
-    let diff = 8.differences_with(&8);
-    println!("{:?}", diff);
-
-    let mut test2 = [None; 8];
-    let mut test2_diff = [Some(6); 8];
-    test2_diff[0] = None;
-
-    let diff = test2.differences_with(&test2_diff);
-    println!("{:?}", diff);
-
-    let bytes = bincode::serialize(&diff).unwrap();
-    println!("Number of bytes: {}", bytes.len());
-
-    let test2_update = test2.update_from_optional(diff);
-    println!("{:?}", test2);
-
-
-    // Todo: Implement the macro for the Player struct
-    let test_player = Player {
-        test: [0; 20],
-        disconnected: false,
-        cards: 0,
-    };
-
-    let mut room = Room {
-        players: [Some(test_player); 8],
-        host: 0,
-    };
-
-    let diff = room.differences_with(&room);
-    println!("{:?}", diff);
-
-    let mut room_updated = room.clone();
-    room_updated.host = 1;
-    if let Some(player) = &mut room_updated.players[0] {
-        player.cards = 1;
-    }
-    let diff = room.differences_with(&room_updated);
-    println!("{:?}", diff);
-
-    // Test number of bytes
-    let bytes = bincode::serialize(&diff).unwrap();
-    println!("Number of bytes: {}", bytes.len());
-    //let diff = test_player_array.differences_with(&test_player_array); // This doesn't work since the Player struct doesn't implement Networked
-}
-
-#[derive(Clone, PlayerFields, Copy, Serialize, Deserialize, Networked, Default, Debug)]
+#[derive(Clone, Networked, PlayerFields, Copy, Serialize, Deserialize, Default, Debug)]
 struct Player {
     #[name]
     test: [u8; 20],
@@ -70,4 +22,45 @@ struct Room {
 
     #[host]
     host: u8,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+enum ClientGameEvent {
+    Test,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+enum ServerGameEvent {
+    Test,
+}
+
+impl RoomLogic for Room {
+    type ClientGameEvent = ClientGameEvent;
+    type ServerGameEvent = ServerGameEvent;
+
+    fn validate_event(&self, player_index: usize, action: &ClientEvent<Self::ClientGameEvent>) -> bool {
+        true
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let state = Rooms::<Room, 8>::new(event_handler);
+
+    let app = Router::new()
+        .route("/ws", get(ws_handler))
+        .with_state(state);
+
+    let listener = TcpListener::bind("localhost:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+
+#[axum::debug_handler]
+async fn ws_handler(ws: WebSocketUpgrade, query: Query<RoomJoinQuery>, State(state): State<Rooms<Room, 8>>) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| state.handle_socket(socket, query.0))
+}
+
+fn event_handler(room: &mut ServerRoom<Room,  8>, player_index: usize, event: &ClientEvent<ClientGameEvent>) {
+    room.room.host = player_index as u8;
+    room.update_all_server_event(&ServerEvent::GameEvent(ServerGameEvent::Test));
 }

@@ -1,12 +1,11 @@
-use events::ClientEvent;
 use serde::{de::DeserializeOwned, Serialize};
 mod networked;
 mod events;
 mod server;
 
 pub use networked::Networked;
-pub use events::ServerEvent;
-use server::ServerRoom;
+pub use events::{ClientEvent, ServerEvent};
+pub use server::{ServerRoom, Rooms, RoomJoinQuery};
 
 pub trait PlayerFields {
     type Name: Serialize + DeserializeOwned + Copy + Default;
@@ -28,11 +27,9 @@ pub trait RoomFields {
 
 pub trait RoomLogic 
 where 
-    Self::Room: RoomFields + Networked + Serialize + DeserializeOwned + Copy + Default,
-    Self::ServerGameEvent: Serialize + DeserializeOwned + Clone + Default + Send,
-    Self::ClientGameEvent: Serialize + DeserializeOwned + Clone + Default + Send,
+    Self::ServerGameEvent: Serialize + DeserializeOwned + Clone + Send,
+    Self::ClientGameEvent: Serialize + DeserializeOwned + Clone + Send,
 {
-    type Room;
     type ServerGameEvent;
     type ClientGameEvent;
 
