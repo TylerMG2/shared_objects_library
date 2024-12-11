@@ -70,7 +70,7 @@ where
     }
 
     // Sends the room changes to all clients except the one at the given index
-    fn update_except_server_event(&mut self, index: usize, event: &ServerEvent<T::ServerGameEvent>) {
+    pub fn update_except_server_event(&mut self, index: usize, event: &ServerEvent<T::ServerGameEvent>) {
         let changes = self.room.differences_with(&self.previous_room);
 
         for (i, _) in self.connections.iter().enumerate() {
@@ -216,8 +216,8 @@ where
         let player_index = room.room.players().iter().position(|player| player.is_none());
 
         if let Some(player_index) = player_index {
-            let player = T::Player::default();
-            //player.set_name(name); TODO: Fix trait
+            let mut player = T::Player::default();
+            player.set_name(&name);
             let connection = Connection { id: player_id.clone(), sender: Some(tx) };
             room.connections[player_index] = Some(connection);
             room.room.players_mut()[player_index] = Some(player);

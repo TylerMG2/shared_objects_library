@@ -8,10 +8,8 @@ pub use events::{ClientEvent, ServerEvent};
 pub use server::{ServerRoom, Rooms, RoomJoinQuery};
 
 pub trait PlayerFields {
-    type Name: Serialize + DeserializeOwned + Copy + Default;
-
-    fn name(&self) -> Self::Name;
-    fn set_name(&mut self, name: Self::Name);
+    fn name(&self) -> &[u8];
+    fn set_name(&mut self, name: &[u8]);
     fn disconnected(&self) -> bool;
     fn set_disconnected(&mut self, disconnected: bool);
 }

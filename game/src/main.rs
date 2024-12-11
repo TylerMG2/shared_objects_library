@@ -1,7 +1,7 @@
 use axum::{extract::{Query, State, WebSocketUpgrade}, response::IntoResponse, routing::get, Router};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
-use websocket_rooms::{core::{ClientEvent, Networked, RoomJoinQuery, RoomLogic, Rooms, ServerEvent, ServerRoom}, proc_macros::{Networked, PlayerFields, RoomFields}};
+use websocket_rooms::{core::{ClientEvent, Networked, PlayerFields, RoomJoinQuery, RoomLogic, Rooms, ServerEvent, ServerRoom}, proc_macros::{Networked, PlayerFields, RoomFields}};
 
 #[derive(Clone, Networked, PlayerFields, Copy, Serialize, Deserialize, Default, Debug)]
 struct Player {
@@ -63,4 +63,6 @@ async fn ws_handler(ws: WebSocketUpgrade, query: Query<RoomJoinQuery>, State(sta
 fn event_handler(room: &mut ServerRoom<Room,  8>, player_index: usize, event: &ClientEvent<ClientGameEvent>) {
     room.room.host = player_index as u8;
     room.update_all_server_event(&ServerEvent::GameEvent(ServerGameEvent::Test));
+
+    let test = room.room.players[0].unwrap().set_name(&[0; 20]);
 }

@@ -38,14 +38,16 @@ pub fn derive_player_fields(input: TokenStream) -> TokenStream {
     // Generate methods to get and set the name and disconnected fields
     let expanded = quote! {
         impl websocket_rooms::core::PlayerFields for #name {
-            type Name = [u8; #name_length];
-
-            fn name(&self) -> Self::Name {
-                self.#name_field_name
+            fn name(&self) -> &[u8] {
+                &self.#name_field_name
             }
 
-            fn set_name(&mut self, name: Self::Name) {
-                self.#name_field_name = name;
+            fn set_name(&mut self, name: &[u8]) {
+                let len = name.len().min(#name_length);
+                self.#name_field_name[..len].copy_from_slice(&name[..len]);
+                if len < #name_length {
+                    self.#name_field_name[len..].fill(0);
+                }
             }
 
             fn disconnected(&self) -> bool {
