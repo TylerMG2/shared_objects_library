@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 websocket-rooms = { path = "../websocket-rooms/websocket-rooms" }
-serde = { version = "1.0.2", features = ["derive"] }
+shared = { path = "../shared" }
 axum = { version = "0.7.7", features = ["ws", "macros"] }
 tokio = { version = "1.40.0", features = ["full"] }

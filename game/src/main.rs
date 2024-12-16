@@ -1,48 +1,7 @@
 use axum::{extract::{Query, State, WebSocketUpgrade}, response::IntoResponse, routing::get, Router};
-use serde::{Deserialize, Serialize};
+use shared::{ClientGameEvent, Room, ServerGameEvent};
 use tokio::net::TcpListener;
-use websocket_rooms::{core::{ClientEvent, Networked, PlayerFields, RoomJoinQuery, RoomLogic, Rooms, ServerRoom}, proc_macros::{Networked, PlayerFields, RoomFields}};
-
-#[derive(Clone, Networked, PlayerFields, Copy, Serialize, Deserialize, Default, Debug)]
-struct Player {
-    #[name]
-    test: [u8; 20],
-
-    #[disconnected]
-    disconnected: bool,
-
-    #[private] // This field should only be sent to the owner of the player, the macro should also enforce this is an Option since
-    // only the owner should be able to see this field
-    cards: u8,
-}
-
-#[derive(Clone, RoomFields, Copy, Serialize, Deserialize, Networked, Default, Debug)]
-struct Room {
-    #[players]
-    players: [Option<Player>; 8],
-
-    #[host]
-    host: u8,
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-enum ClientGameEvent {
-    Test,
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-enum ServerGameEvent {
-    Test,
-}
-
-impl RoomLogic for Room {
-    type ClientGameEvent = ClientGameEvent;
-    type ServerGameEvent = ServerGameEvent;
-
-    fn validate_event(&self, player_index: usize, action: &ClientGameEvent) -> bool {
-        true
-    }
-}
+use websocket_rooms::core::{ClientEvent, PlayerFields, RoomJoinQuery, Rooms, ServerRoom};
 
 const MAX_PLAYERS: usize = 8;
 

@@ -2,5 +2,5 @@
 
 members = [
     "frontend",
-    "game",
+    "game", "shared",
 ]
