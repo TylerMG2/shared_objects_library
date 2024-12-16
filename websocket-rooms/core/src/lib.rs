@@ -2,6 +2,7 @@ use serde::{de::DeserializeOwned, Serialize};
 mod networked;
 mod events;
 mod server;
+mod client;
 
 pub use networked::Networked;
 pub use events::{ClientEvent, ServerEvent};

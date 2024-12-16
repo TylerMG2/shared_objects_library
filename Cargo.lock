@@ -337,6 +337,7 @@ dependencies = [
  "axum",
  "bincode",
  "futures",
+ "leptos",
  "serde",
  "tokio",
  "web-sys",

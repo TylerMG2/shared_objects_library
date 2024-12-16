@@ -57,17 +57,19 @@ where
                 self.room.validate_event(index, action)
             }
             ClientEvent::LeaveRoom => {
-                false
+                true // Always valid
             }
             ClientEvent::JoinRoom { name: _ } => {
-                false
+                false // Should never be called here
             }
             ClientEvent::Unknown => {
-                false
+                false // This should be impossible
             }
         };
 
-        (self.handle_event)(self, index, event);
+        if is_valid {
+            (self.handle_event)(self, index, event);
+        }
     }
 
     pub fn update_all_server_event(&mut self, event: &ServerEvent<T::ServerGameEvent>) {
@@ -124,7 +126,7 @@ where
                 // Only the player who owns the private field should receive the changes, the other players should receive None for that
                 // whole array index.
 
-                let message = ServerMessage::<T::ServerGameEvent, T> {
+                let message = ServerMessage::<T> {
                     event: event.clone(),
                     room: changes,
                 };
@@ -314,10 +316,13 @@ where
             Message::Binary(data) => {
                 let event = bincode::deserialize::<ClientEvent<T::ClientGameEvent>>(&data).unwrap_or_default();
                 let mut rooms = recv_state.write().await;
-                let room = rooms.get_mut(&recv_query.code).expect("Room should only be removed if all players are disconnected");
+                let Some(room) = rooms.get_mut(&recv_query.code) else {
+                    break;
+                }; // Cool syntax!
 
                 if let ClientEvent::LeaveRoom = event {
                     room.connections[player_index] = None;
+                    room.handle_event(player_index, &event);
                     room.update_all_server_event(&ServerEvent::PlayerLeft);
                     break;
                 }
