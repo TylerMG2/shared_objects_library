@@ -33,7 +33,7 @@ where
 
     // Validate in almost every game should be shared between the client and server to allow for instant updates
     // This is because the client should be able to predict the outcome of an action before the server sends the update
-    fn validate_event(&self, player_index: usize, action: &ClientEvent<Self::ClientGameEvent>) -> bool;
+    fn validate_event(&self, player_index: usize, action: &Self::ClientGameEvent) -> bool;
 
     // Ideally in the future theres some shared update function here that can be used by the client and server
     // so the client can be given instant feedback on their actions thanks in part to the validate_action function

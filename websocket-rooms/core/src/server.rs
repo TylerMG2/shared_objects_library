@@ -52,9 +52,20 @@ where
     }
 
     pub fn handle_event(&mut self, index: usize, event: &ClientEvent<T::ClientGameEvent>) {
-        if !self.room.validate_event(index, event) {
-            return;
-        }
+        let is_valid = match event {
+            ClientEvent::GameEvent(action) => {
+                self.room.validate_event(index, action)
+            }
+            ClientEvent::LeaveRoom => {
+                false
+            }
+            ClientEvent::JoinRoom { name: _ } => {
+                false
+            }
+            ClientEvent::Unknown => {
+                false
+            }
+        };
 
         (self.handle_event)(self, index, event);
     }
@@ -67,6 +78,10 @@ where
         }
 
         self.previous_room = self.room;
+    }
+
+    pub fn update_all(&mut self, event: &T::ServerGameEvent) {
+        self.update_all_server_event(&ServerEvent::GameEvent(event.clone()));
     }
 
     // Sends the room changes to all clients except the one at the given index
@@ -82,12 +97,20 @@ where
         self.previous_room = self.room;
     }
 
+    pub fn update_except(&mut self, index: usize, event: &T::ServerGameEvent) {
+        self.update_except_server_event(index, &ServerEvent::GameEvent(event.clone()));
+    }
+
     // Sends the room changes to just one client
     // Should only be used for private events and if just private fields have changed
     pub fn update_one_server_event(&mut self, index: usize, event: &ServerEvent<T::ServerGameEvent>) {
         let changes = self.room.differences_with(&self.previous_room);
         self.send_message(index, event, changes); // To stop desync issues, we should only send the changes to private fields for the player at this index
         self.previous_room = self.room;
+    }
+
+    pub fn update_one(&mut self, index: usize, event: &T::ServerGameEvent) {
+        self.update_one_server_event(index, &ServerEvent::GameEvent(event.clone()));
     }
 
     pub fn send_message(&self, index: usize, event: &ServerEvent<T::ServerGameEvent>, changes: Option<T::Optional>) {
